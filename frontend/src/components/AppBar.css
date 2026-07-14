@@ -1,0 +1,143 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+.navbar{
+    width:100%;
+    height:85px;
+
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+
+    padding:0 60px;
+
+    background:linear-gradient(135deg,#0b1220,#123b7a,#2563eb);
+
+    box-shadow:0 10px 25px rgba(0,0,0,.18);
+
+    position:sticky;
+    top:0;
+    z-index:1000;
+}
+
+.logo{
+    display:flex;
+    align-items:center;
+    gap:16px;
+}
+
+.logo-icon{
+    width:56px;
+    height:56px;
+
+    border-radius:16px;
+
+    background:rgba(255,255,255,.12);
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    backdrop-filter:blur(10px);
+
+    border:1px solid rgba(255,255,255,.2);
+
+    font-size:28px;
+    color:white;
+
+    transition:.3s;
+}
+
+.logo-icon:hover{
+    transform:rotate(-10deg) scale(1.08);
+    background:white;
+    color:#2563eb;
+}
+
+.logo-text h2{
+    color:white;
+    font-size:36px;
+    font-weight:700;
+    margin:0;
+}
+
+.logo-text p{
+    color:#dbeafe;
+    font-size:14px;
+    margin-top:2px;
+}
+
+.nav-menu{
+    display:flex;
+    gap:40px;
+}
+
+.nav-menu a{
+    color:white;
+    text-decoration:none;
+    font-size:17px;
+    font-weight:500;
+    position:relative;
+    transition:.3s;
+}
+
+.nav-menu a::after{
+    content:"";
+    position:absolute;
+    left:0;
+    bottom:-8px;
+    width:0;
+    height:3px;
+    background:white;
+    border-radius:10px;
+    transition:.3s;
+}
+
+.nav-menu a:hover{
+    color:#e0f2fe;
+}
+
+.nav-menu a:hover::after{
+    width:100%;
+}
+
+.login-btn{
+    padding:12px 34px;
+    border:none;
+    border-radius:40px;
+
+    background:white;
+    color:#2563eb;
+
+    font-size:17px;
+    font-weight:700;
+
+    cursor:pointer;
+
+    transition:.3s;
+}
+
+.login-btn:hover{
+    background:#dbeafe;
+    transform:translateY(-3px);
+    box-shadow:0 8px 20px rgba(255,255,255,.25);
+}
+
+@media(max-width:900px){
+
+    .navbar{
+        flex-direction:column;
+        height:auto;
+        padding:20px;
+        gap:20px;
+    }
+
+    .nav-menu{
+        flex-wrap:wrap;
+        justify-content:center;
+        gap:20px;
+    }
+}
