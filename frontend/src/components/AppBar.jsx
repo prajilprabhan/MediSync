@@ -16,13 +16,15 @@ function AppBar() {
         </div>
       </div>
 
-       <nav className="nav-menu">
-        <a href="/">Home</a>
-        <a href="/about">About</a>
-        <a href="/analyzer">Analyzer</a>
-        <a href="/contact">Contact</a>
+      <nav className="nav-menu">
+        <NavLink to="/">Home</NavLink>
+        <NavLink to="/Analyzer">Medicine Analyzer</NavLink>
+        <NavLink to="/about">About</NavLink>
+        <NavLink to="/contact">Contact</NavLink>
+        
+
       </nav>
-      
+
       <button className="login-btn">Login</button>
     </header>
   );
