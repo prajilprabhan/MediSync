@@ -1,14 +1,15 @@
 import "./App.css";
 
 import AppBar from "./components/AppBar";
+import Footer from "./components/Footer";
 
-
-import { BrowserRouter as Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 
 function App() {
   return (
     <>
       <AppBar />
+      <Footer />
     </>
   );
 }
