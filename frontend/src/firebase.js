@@ -1,29 +1,28 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth"; 
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAuth } from "firebase/auth";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: import.meta.APIKEY,
-  authDomain: import.meta.AUTHDOMAIN,
-  projectId: import.meta.PROJECTID,
-  storageBucket: import.meta.STORAGEBUCKET,
-  messagingSenderId: import.meta.MESSAGINGSENDERID,
-  appId: import.meta.APPID,
-  measurementId: import.meta.MEASUREMENTID
+  apiKey: import.meta.env.VITE_FIREBASE_APIKEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTHDOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECTID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGEBUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGINGSENDERID,
+  appId: import.meta.env.VITE_FIREBASE_APPID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENTID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+console.log("Firebase Project ID:", firebaseConfig.projectId);
 
-// Export Auth
+const app = initializeApp(firebaseConfig);
+
+let analytics;
+try {
+  analytics = getAnalytics(app);
+} catch (error) {
+  console.warn("Firebase Analytics is not supported or failed to initialize:", error);
+}
+
 export const auth = getAuth(app);
 
-// Export app if needed elsewhere
-
-export default app
+export default app;
