@@ -1,63 +1,68 @@
 import pandas as pd
 from pathlib import Path
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
 import joblib
 
 # Load dataset
 BASE_DIR = Path(__file__).resolve().parent.parent
+csv_path = BASE_DIR / "datasets" / "MediSync_DDI_cleaned.csv"
 
-csv = BASE_DIR / "datasets" / "DDI_lower.csv"
+print(f"Loading dataset from {csv_path}...")
+df = pd.read_csv(csv_path)
 
-df = pd.read_csv(csv)
+# Keep only necessary columns and drop missing values
+df = df[["drug_1", "drug_2", "severity"]].dropna()
 
-# Remove missing values
-df = df.dropna()
+# Normalize drug names and severities
+df["drug_1"] = df["drug_1"].str.strip().str.lower()
+df["drug_2"] = df["drug_2"].str.strip().str.lower()
+df["severity"] = df["severity"].str.strip().str.title()
 
-# Encode Drug_A
+# Standardize severity names
+df["severity"] = df["severity"].replace({
+    "Major": "Major",
+    "Moderate": "Moderate",
+    "Minor": "Minor",
+    "Unknown": "Minor"  # default unknowns to minor for the classifier
+})
+
+print(f"Dataset loaded. Total rows: {len(df)}")
+print("Severity distribution:")
+print(df["severity"].value_counts())
+
+# Fit LabelEncoders on drug names and severities
+print("Fitting encoders...")
 drug_a_encoder = LabelEncoder()
-df["Drug_A"] = drug_a_encoder.fit_transform(df["Drug_A"])
+df["drug_1_encoded"] = drug_a_encoder.fit_transform(df["drug_1"])
 
-# Encode Drug_B
 drug_b_encoder = LabelEncoder()
-df["Drug_B"] = drug_b_encoder.fit_transform(df["Drug_B"])
+df["drug_2_encoded"] = drug_b_encoder.fit_transform(df["drug_2"])
 
-# Encode Level
 level_encoder = LabelEncoder()
-df["Level"] = level_encoder.fit_transform(df["Level"])
+df["severity_encoded"] = level_encoder.fit_transform(df["severity"])
 
 # Features and target
-X = df[["Drug_A", "Drug_B"]]
-y = df["Level"]
+X = df[["drug_1_encoded", "drug_2_encoded"]]
+y = df["severity_encoded"]
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
-)
-
-# Train model
+# Train model on the complete dataset
+print("Training Random Forest Classifier on the complete dataset...")
 model = RandomForestClassifier(
-    n_estimators=200,
-    random_state=42
+    n_estimators=150,
+    random_state=42,
+    n_jobs=-1
 )
-
-model.fit(X_train, y_train)
-
-# Test
-pred = model.predict(X_test)
-
-print("Accuracy:", accuracy_score(y_test, pred))
-print(classification_report(y_test, pred))
+model.fit(X, y)
 
 # Save model and encoders
-joblib.dump(model, "models/severity_model.pkl")
-joblib.dump(drug_a_encoder, "models/drug_a_encoder.pkl")
-joblib.dump(drug_b_encoder, "models/drug_b_encoder.pkl")
-joblib.dump(level_encoder, "models/level_encoder.pkl")
+models_dir = BASE_DIR / "models"
+models_dir.mkdir(exist_ok=True)
 
-print("Model saved successfully.")
+print("Saving models and encoders...")
+joblib.dump(model, models_dir / "severity_model.pkl")
+joblib.dump(drug_a_encoder, models_dir / "drug_a_encoder.pkl")
+joblib.dump(drug_b_encoder, models_dir / "drug_b_encoder.pkl")
+joblib.dump(level_encoder, models_dir / "level_encoder.pkl")
+
+print("Model and encoders saved successfully.")
