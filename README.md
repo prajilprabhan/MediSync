@@ -27,16 +27,17 @@ MediSync is an AI-powered web application that detects and analyzes potential **
 - Bootstrap
 - React Router
 - Axios
+- Firebase SDK (Auth & Firestore)
 
 ### Backend
 - FastAPI
 - Python
-- SQLAlchemy
-- JWT Authentication
 - Uvicorn
 
-### Database
-- PostgreSQL
+### Database & Authentication
+- Firebase Authentication (User sign up / sign in)
+- Cloud Firestore (Logging and tracking user medications)
+- CSV File-based Storage (For lookup and ML training data)
 
 ### Machine Learning
 - Scikit-learn
@@ -128,10 +129,8 @@ http://localhost:5173
 
 | Method | Endpoint | Description |
 |---------|----------|-------------|
-| POST | /register | Register a new user |
-| POST | /login | Login user |
-| GET | /search | Search medicines |
-| POST | /predict | Predict drug interaction severity |
+| GET | /search | Search medicines with autocomplete |
+| POST | /analyze | Analyze drug interaction severity & duplicate active ingredients |
 
 ---
 
