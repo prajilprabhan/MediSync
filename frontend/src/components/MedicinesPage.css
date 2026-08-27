@@ -1,0 +1,510 @@
+.medicines-page {
+    min-height: calc(100vh - 80px);
+    position: relative;
+    overflow: hidden;
+    padding: 50px 30px;
+    color: #fff;
+    background: linear-gradient(
+        135deg,
+        #020617 0%,
+        #071b39 40%,
+        #08142d 70%,
+        #000814 100%
+    );
+    font-family: 'Outfit', sans-serif;
+}
+
+/* Background animated elements matching AnalyzerPage */
+.medicines-page .background {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.medicines-page .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 45px 45px;
+    animation: gridMove 25s linear infinite;
+}
+
+.medicines-page .bubble {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(95px);
+    opacity: 0.35;
+    animation: float 20s ease-in-out infinite alternate;
+}
+
+.medicines-page .bubble1 {
+    width: 380px;
+    height: 380px;
+    background: #0ea5e9;
+    left: -100px;
+    top: -50px;
+}
+
+.medicines-page .bubble2 {
+    width: 340px;
+    height: 340px;
+    background: #4f46e5;
+    right: -100px;
+    bottom: -100px;
+    animation-duration: 25s;
+}
+
+.medicines-page .bubble3 {
+    width: 250px;
+    height: 250px;
+    background: #8b5cf6;
+    left: 55%;
+    top: 30%;
+    animation-duration: 18s;
+}
+
+@keyframes gridMove {
+    from { transform: translateY(0); }
+    to { transform: translateY(45px); }
+}
+
+@keyframes float {
+    from { transform: translate(0, 0); }
+    to { transform: translate(60px, -60px); }
+}
+
+/* Page Layout */
+.medicines-content {
+    position: relative;
+    z-index: 5;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.medicines-header {
+    text-align: center;
+    margin-bottom: 45px;
+}
+
+.medicines-header h1 {
+    font-size: 38px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 10px 0;
+    letter-spacing: 0.5px;
+}
+
+.medicines-header p {
+    font-size: 16px;
+    color: #94a3b8;
+    margin: 0;
+}
+
+/* 2-Column Grid Layout */
+.medicines-layout {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr;
+    gap: 30px;
+}
+
+@media (max-width: 968px) {
+    .medicines-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Card Styling matching Dashboard */
+.medicines-card {
+    background: rgba(7, 18, 38, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-radius: 20px;
+    padding: 28px;
+    box-shadow: 0 0 25px rgba(0, 140, 255, 0.08);
+    height: fit-content;
+}
+
+.medicines-card h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #7dd3fc;
+    margin: 0 0 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Search Box styling */
+.med-search-wrapper {
+    display: flex;
+    align-items: center;
+    background: #0f172a;
+    border-radius: 14px;
+    padding: 14px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.med-search-wrapper:focus-within {
+    border-color: #38bdf8;
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+.med-search-wrapper input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: none;
+    color: #fff;
+    font-size: 15px;
+    padding-left: 12px;
+}
+
+.med-search-wrapper input::placeholder {
+    color: #64748b;
+}
+
+.search-clear-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 5px;
+}
+
+.search-clear-btn:hover {
+    color: #f87171;
+}
+
+/* Suggestion Box */
+.med-suggestion-box {
+    margin-top: 15px;
+    max-height: 250px;
+    overflow-y: auto;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.med-suggestion-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.med-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.med-suggestion-item:hover {
+    background: rgba(56, 189, 248, 0.15);
+    color: #fff;
+}
+
+.suggestion-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pill-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(56, 189, 248, 0.1);
+    color: #38bdf8;
+    font-size: 14px;
+}
+
+.suggestion-name {
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.add-btn {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.add-btn:hover {
+    background: #0284c7;
+    color: #fff;
+    border-color: #0284c7;
+}
+
+.add-btn.added {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.3);
+    cursor: not-allowed;
+}
+
+/* Selected List */
+.selected-list {
+    margin-top: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.selected-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.selected-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.selected-item.active {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: #38bdf8;
+}
+
+.selected-med-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.remove-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.remove-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+/* Empty State / Not Selected */
+.no-selection {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 80px 40px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+}
+
+.no-selection-icon {
+    font-size: 40px;
+    margin-bottom: 20px;
+    color: rgba(56, 189, 248, 0.3);
+}
+
+.no-selection h3 {
+    margin: 0 0 8px 0;
+    color: #f1f5f9;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.no-selection p {
+    margin: 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+/* Details Section Details Card */
+.details-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 25px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 20px;
+}
+
+.details-header-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #0ea5e9, #4f46e5);
+    color: #fff;
+    font-size: 22px;
+}
+
+.details-title h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    text-transform: capitalize;
+}
+
+.details-title p {
+    font-size: 13px;
+    color: #38bdf8;
+    margin: 4px 0 0 0;
+}
+
+.details-body {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+/* Badges for conditions */
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #94a3b8;
+    margin-bottom: 12px;
+}
+
+.conditions-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.condition-badge {
+    background: rgba(56, 189, 248, 0.1);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 30px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+/* Description Text */
+.description-text {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    padding: 20px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: #cbd5e1;
+    margin: 0;
+}
+
+/* Regional Relevance (India / Kerala context) */
+.relevance-card {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    gap: 15px;
+}
+
+.relevance-icon {
+    font-size: 22px;
+    color: #10b981;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.relevance-content h4 {
+    margin: 0 0 6px 0;
+    color: #34d399;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.relevance-content p {
+    margin: 0;
+    color: #a7f3d0;
+    font-size: 13.5px;
+    line-height: 1.6;
+}
+
+/* Metadata (Source note) */
+.details-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 18px;
+    margin-top: 10px;
+}
+
+.source-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.source-badge strong {
+    color: #cbd5e1;
+}
+
+/* Loading indicator */
+.loading-box {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    color: #38bdf8;
+    gap: 10px;
+    font-weight: 500;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(56, 189, 248, 0.2);
+    border-radius: 50%;
+    border-top-color: #38bdf8;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
