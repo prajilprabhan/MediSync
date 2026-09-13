@@ -1,14 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   Search,
   Plus,
   X,
   ShieldCheck,
   Pill,
+  History,
+  CheckCircle,
+  ArrowRight,
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { saveAnalysisHistory, updateAnalysisHistory } from "../services/firestore";
 import "./Dashboard.css";
 
 function Dashboard() {
+  const { user } = useAuth();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [selectedMedicines, setSelectedMedicines] = useState([]);
@@ -19,7 +27,22 @@ function Dashboard() {
   const [medicationDetails, setMedicationDetails] = useState([]);
   const [deepAnalysis, setDeepAnalysis] = useState("");
   const [deepLoading, setDeepLoading] = useState(false);
+  const [currentHistoryId, setCurrentHistoryId] = useState(null);
+  const [savedToHistory, setSavedToHistory] = useState(false);
+  const [savingHistory, setSavingHistory] = useState(false);
 
+  // Pre-load medicines if navigated from History page
+  useEffect(() => {
+    if (location.state?.medicines && Array.isArray(location.state.medicines) && location.state.medicines.length > 0) {
+      setSelectedMedicines(location.state.medicines);
+      setAnalyzed(false);
+      setResults([]);
+      setMedicationDetails([]);
+      setDeepAnalysis("");
+      setSavedToHistory(false);
+      setCurrentHistoryId(null);
+    }
+  }, [location.state]);
 
   const searchMedicine = async (value) => {
     setSearchTerm(value);
@@ -67,6 +90,8 @@ function Dashboard() {
       setResults([]);
       setMedicationDetails([]);
       setDeepAnalysis("");
+      setSavedToHistory(false);
+      setCurrentHistoryId(null);
     }
   };
 
@@ -80,6 +105,8 @@ function Dashboard() {
     setResults([]);
     setMedicationDetails([]);
     setDeepAnalysis("");
+    setSavedToHistory(false);
+    setCurrentHistoryId(null);
   };
 
   const handleKeyDown = (e) => {
@@ -97,6 +124,8 @@ function Dashboard() {
     setResults([]);
     setMedicationDetails([]);
     setDeepAnalysis("");
+    setSavedToHistory(false);
+    setCurrentHistoryId(null);
     
     try {
       const response = await fetch("http://localhost:8000/analyze", {
@@ -132,8 +161,47 @@ function Dashboard() {
       
       const details = await Promise.all(detailsPromises);
       setMedicationDetails(details);
-      
       setAnalyzed(true);
+
+      // Compute highest severity
+      let maxSeverity = "No Interaction";
+      if (data && data.length > 0) {
+        const hasMajor = data.some(
+          (r) => String(r.severity || "").toLowerCase() === "major"
+        );
+        const hasModerate = data.some(
+          (r) => String(r.severity || "").toLowerCase() === "moderate"
+        );
+        const hasMinor = data.some(
+          (r) => String(r.severity || "").toLowerCase() === "minor"
+        );
+        if (hasMajor) maxSeverity = "Major";
+        else if (hasModerate) maxSeverity = "Moderate";
+        else if (hasMinor) maxSeverity = "Minor";
+      }
+
+      // Automatically save session to Firebase Firestore if logged in
+      if (user?.uid) {
+        try {
+          setSavingHistory(true);
+          const saveResult = await saveAnalysisHistory({
+            userId: user.uid,
+            userEmail: user.email || "user",
+            drugs: selectedMedicines,
+            results: data,
+            medicationDetails: details,
+            maxSeverity,
+            interactionCount: data.length,
+            deepAnalysis: "",
+          });
+          setCurrentHistoryId(saveResult.id);
+          setSavedToHistory(true);
+        } catch (saveErr) {
+          console.warn("Could not auto-save analysis history:", saveErr);
+        } finally {
+          setSavingHistory(false);
+        }
+      }
     } catch (err) {
       setError(err.message || "An error occurred during analysis.");
       console.error("Analysis error:", err);
@@ -164,6 +232,17 @@ function Dashboard() {
       
       const data = await response.json();
       setDeepAnalysis(data.analysis);
+
+      // Update Firestore history record with deep analysis report
+      if (currentHistoryId) {
+        try {
+          await updateAnalysisHistory(currentHistoryId, {
+            deepAnalysis: data.analysis,
+          }, user?.uid);
+        } catch (updErr) {
+          console.warn("Could not update analysis history with deep report:", updErr);
+        }
+      }
     } catch (err) {
       setError(err.message || "An error occurred during Deep AI analysis.");
       console.error("Deep AI analysis error:", err);
@@ -187,6 +266,31 @@ function Dashboard() {
         <h1 className="page-title">
           Drug Interaction Dashboard
         </h1>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: "-15px", marginBottom: "32px" }}>
+          <Link
+            to="/history"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              background: "rgba(56, 189, 248, 0.08)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              color: "#38bdf8",
+              padding: "7px 18px",
+              borderRadius: "100px",
+              fontSize: "0.85rem",
+              fontWeight: "500",
+              textDecoration: "none",
+              backdropFilter: "blur(8px)",
+              transition: "all 0.2s ease"
+            }}
+          >
+            <History size={16} />
+            <span>View Analysis History</span>
+            <ArrowRight size={14} />
+          </Link>
+        </div>
 
         <div className="analyzer-grid">
           {/* Search Container */}
@@ -257,7 +361,37 @@ function Dashboard() {
 
           {/* Result */}
           <div className="card results-card">
-            <h2>Interaction Results</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
+              <h2 style={{ margin: 0 }}>Interaction Results</h2>
+              {savingHistory && (
+                <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                  Saving to history...
+                </span>
+              )}
+              {savedToHistory && !savingHistory && (
+                <Link
+                  to="/history"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(16, 185, 129, 0.12)",
+                    border: "1px solid rgba(16, 185, 129, 0.35)",
+                    color: "#34d399",
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    fontSize: "0.78rem",
+                    fontWeight: "500",
+                    textDecoration: "none",
+                  }}
+                  title="Click to view all saved analyses in your History"
+                >
+                  <CheckCircle size={14} />
+                  <span>Saved to History</span>
+                  <ArrowRight size={13} />
+                </Link>
+              )}
+            </div>
 
             {loading && <p className="status-text">Analyzing interactions...</p>}
             {error && <p className="error-text">{error}</p>}
