@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   addMedicine,
   getAllMedicines,
+  getUserMedicines,
   deleteMedicine,
   subscribeAllMedicines,
+  subscribeUserMedicines,
 } from "../services/firestore";
 import {
   Pill,
@@ -19,7 +21,18 @@ import {
   RefreshCw,
   Tag,
   FileText,
+  Sparkles,
+  ShieldCheck,
+  Activity,
+  Database,
+  Sunrise,
+  Sun,
+  Moon,
+  Check,
+  Printer,
+  Download,
 } from "lucide-react";
+import { printPrescriptionReport } from "../services/printService";
 import "./AddMedicine.css";
 
 function AddMedicine() {
@@ -28,7 +41,9 @@ function AddMedicine() {
   const [fetching, setFetching] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("All");
   const [statusMessage, setStatusMessage] = useState(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Form State
   const [medicineName, setMedicineName] = useState("");
@@ -42,17 +57,18 @@ function AddMedicine() {
     bedtime: false,
   });
 
-  // Fetch all medicines on initial load and set up real-time sync
+  // Fetch medicines from Firebase Firestore and set up real-time sync
   useEffect(() => {
     let unsubscribe = null;
+    const uid = user?.uid || null;
 
     const loadInitialMedicines = async () => {
       try {
         setFetching(true);
-        const data = await getAllMedicines();
+        const data = await getAllMedicines(uid);
         setMedicines(data);
       } catch (err) {
-        console.error("Initial fetch error:", err);
+        console.error("Initial fetch error from Firebase:", err);
       } finally {
         setFetching(false);
       }
@@ -61,10 +77,15 @@ function AddMedicine() {
     loadInitialMedicines();
 
     try {
-      unsubscribe = subscribeAllMedicines((updatedList) => {
-        setMedicines(updatedList);
-        setFetching(false);
-      });
+      unsubscribe = uid
+        ? subscribeUserMedicines(uid, (updatedList) => {
+            setMedicines(updatedList);
+            setFetching(false);
+          })
+        : subscribeAllMedicines((updatedList) => {
+            setMedicines(updatedList);
+            setFetching(false);
+          });
     } catch (err) {
       console.warn("Real-time subscription fallback to static fetch:", err);
     }
@@ -74,7 +95,7 @@ function AddMedicine() {
         unsubscribe();
       }
     };
-  }, []);
+  }, [user]);
 
   const handleTimingToggle = (timeKey) => {
     setTimings((prev) => ({
@@ -86,13 +107,21 @@ function AddMedicine() {
   const handleManualRefresh = async () => {
     try {
       setFetching(true);
-      const data = await getAllMedicines();
+      const data = await getAllMedicines(user?.uid || null);
       setMedicines(data);
     } catch (err) {
       console.error("Refresh failed:", err);
     } finally {
       setFetching(false);
     }
+  };
+
+  // Quick preset loader to help user quickly fill
+  const handleQuickPreset = (presetName, presetDosage, presetCategory, presetInstruction) => {
+    setMedicineName(presetName);
+    setDosage(presetDosage);
+    setCategory(presetCategory);
+    setInstructions(presetInstruction);
   };
 
   const handleSubmit = async (e) => {
@@ -126,7 +155,7 @@ function AddMedicine() {
 
       setStatusMessage({
         type: "success",
-        text: `"${medicineName.trim()}" successfully saved to Firebase!`,
+        text: `"${medicineName.trim()}" successfully synchronized to Firebase!`,
       });
 
       // Reset form
@@ -137,7 +166,7 @@ function AddMedicine() {
       setTimings({ morning: false, noon: false, night: false, bedtime: false });
 
       // Immediate refresh as backup
-      const refreshed = await getAllMedicines();
+      const refreshed = await getAllMedicines(user?.uid || null);
       setMedicines(refreshed);
 
       setTimeout(() => {
@@ -145,9 +174,12 @@ function AddMedicine() {
       }, 5000);
     } catch (err) {
       console.error("Error storing medicine to Firebase:", err);
+      const isPermission = err?.code === "permission-denied" || String(err?.message || err).includes("permission");
       setStatusMessage({
         type: "error",
-        text: "Failed to store medicine to Firebase. Please check your connection.",
+        text: isPermission
+          ? "Firebase Permission Denied: Firestore Security Rules are currently blocking writes. Please update the Rules tab in your Firebase Console."
+          : `Failed to store medicine to Firebase: ${err.message || "Please check connection"}`,
       });
     } finally {
       setSubmitting(false);
@@ -176,15 +208,85 @@ function AddMedicine() {
     }
   };
 
-  // Filter medicines based on user search
+  // Metrics computation for HUD stats bar
+  const stats = useMemo(() => {
+    const total = medicines.length;
+    const tablets = medicines.filter((m) => (m.category || "").toLowerCase() === "tablet").length;
+    const scheduled = medicines.filter((m) => {
+      const t = m.timings || {};
+      return t.morning || t.noon || t.night || t.bedtime;
+    }).length;
+    return { total, tablets, scheduled };
+  }, [medicines]);
+
+  // Filter medicines based on user search and category filter
   const filteredMedicines = medicines.filter((m) => {
     const query = searchFilter.toLowerCase().trim();
-    if (!query) return true;
-    const nameMatch = m.medicineName?.toLowerCase().includes(query) || m.name?.toLowerCase().includes(query);
-    const dosageMatch = m.dosage?.toLowerCase().includes(query);
-    const categoryMatch = m.category?.toLowerCase().includes(query);
-    return nameMatch || dosageMatch || categoryMatch;
+    const nameMatch = (m.medicineName || m.name || "").toLowerCase().includes(query);
+    const dosageMatch = (m.dosage || "").toLowerCase().includes(query);
+    const categoryMatch = (m.category || "").toLowerCase().includes(query);
+    const matchesSearch = !query || nameMatch || dosageMatch || categoryMatch;
+
+    if (!matchesSearch) return false;
+
+    if (selectedCategoryFilter === "All") return true;
+    return (m.category || "").toLowerCase() === selectedCategoryFilter.toLowerCase();
   });
+
+  const categoriesList = ["All", "Tablet", "Capsule", "Syrup", "Injection", "Other"];
+
+  // =========================================================================
+  // SIMPLE REPORT GENERATION HANDLERS
+  // =========================================================================
+  const handlePrintReport = () => {
+    printPrescriptionReport({ user, medicines });
+  };
+
+  const handleDownloadTextReport = () => {
+    const dateStr = new Date().toLocaleString();
+    let content = `====================================================\n`;
+    content += `       MEDISYNC - MEDICATION SCHEDULE REPORT        \n`;
+    content += `====================================================\n\n`;
+    content += `Patient / Account : ${user?.email || "Guest Patient"}\n`;
+    content += `Generated On      : ${dateStr}\n`;
+    content += `Total Medications : ${medicines.length}\n\n`;
+    content += `----------------------------------------------------\n`;
+    content += `MEDICATION DOSAGE SCHEDULE\n`;
+    content += `----------------------------------------------------\n\n`;
+
+    medicines.forEach((med, idx) => {
+      const name = med.medicineName || med.name || "Unnamed Medicine";
+      const dose = med.dosage || "Standard Dose";
+      const cat = med.category || "Tablet";
+      const inst = med.instructions || "As directed";
+      const t = med.timings || {};
+      const activeTimes = [
+        t.morning ? "Morning" : null,
+        t.noon ? "Noon" : null,
+        t.night ? "Night" : null,
+        t.bedtime ? "Bedtime" : null,
+      ].filter(Boolean).join(", ") || "No specific schedule";
+
+      content += `${idx + 1}. ${name.toUpperCase()} (${dose})\n`;
+      content += `   Type         : ${cat}\n`;
+      content += `   Instructions : ${inst}\n`;
+      content += `   Daily Dosing : ${activeTimes}\n\n`;
+    });
+
+    content += `----------------------------------------------------\n`;
+    content += `Notice: Please adhere to guidelines provided by your physician.\n`;
+    content += `Generated automatically via MediSync.\n`;
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `MediSync_Medication_Report_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="add-medicine-page">
@@ -200,46 +302,129 @@ function AddMedicine() {
         {/* Page Header */}
         <div className="page-header">
           <div className="header-badge">
-            <Pill size={16} />
-            <span>Firebase Medicine Management</span>
+            <Pill size={16} className="badge-icon-spin" />
+            <span>Firebase Cloud Rx Management</span>
           </div>
-          <h1 className="page-title">Add & Track Medicines</h1>
+          <h1 className="page-title">Medication Formulations & Schedule</h1>
           <p className="page-subtitle">
-            Store newly added medicines into Firebase and access all synchronized pharmaceutical formulations.
+            Securely register, catalog, and configure dosage schedules synchronized directly to your cloud Firebase database.
           </p>
+        </div>
+
+        {/* HUD Analytics Summary Bar */}
+        <div className="med-hud-stats-bar">
+          <div className="hud-stat-card">
+            <div className="hud-stat-icon-wrap blue">
+              <Database size={22} />
+            </div>
+            <div className="hud-stat-info">
+              <span className="hud-stat-value">{medicines.length}</span>
+              <span className="hud-stat-label">Cloud Stored Drugs</span>
+            </div>
+          </div>
+
+          <div className="hud-stat-card">
+            <div className="hud-stat-icon-wrap emerald">
+              <ShieldCheck size={22} />
+            </div>
+            <div className="hud-stat-info">
+              <div className="hud-live-tag">
+                <span className="hud-pulse-dot"></span>
+                <span>Active</span>
+              </div>
+              <span className="hud-stat-label">Firestore Real-time Sync</span>
+            </div>
+          </div>
+
+          <div className="hud-stat-card">
+            <div className="hud-stat-icon-wrap cyan">
+              <Clock size={22} />
+            </div>
+            <div className="hud-stat-info">
+              <span className="hud-stat-value">{stats.scheduled}</span>
+              <span className="hud-stat-label">Timed Regimens</span>
+            </div>
+          </div>
+
+          <div className="hud-stat-card">
+            <div className="hud-stat-icon-wrap violet">
+              <Activity size={22} />
+            </div>
+            <div className="hud-stat-info">
+              <span className="hud-stat-value">{stats.tablets}</span>
+              <span className="hud-stat-label">Tablet Formulations</span>
+            </div>
+          </div>
         </div>
 
         {/* Main 2-Column Grid */}
         <div className="medicine-grid-container">
-          {/* LEFT: Add Medicine Form */}
-          <div className="glass-panel">
+          {/* LEFT: Add Medicine Form Panel */}
+          <div className="glass-panel form-panel">
             <div className="panel-header">
-              <h2 className="panel-title">
-                <PlusCircle size={22} color="#38bdf8" /> Add New Medicine
-              </h2>
-              <span className="panel-badge">Firestore Sync</span>
+              <div className="panel-header-title-group">
+                <div className="panel-icon-badge">
+                  <PlusCircle size={20} />
+                </div>
+                <div>
+                  <h2 className="panel-title">Add Medication</h2>
+                  <span className="panel-subtext">Store in cloud database</span>
+                </div>
+              </div>
+              <span className="panel-badge-live">
+                <span className="live-dot"></span>
+                Live Firestore
+              </span>
+            </div>
+
+            {/* Quick Preset Chips */}
+            <div className="quick-presets-section">
+              <span className="quick-presets-label">
+                <Sparkles size={12} /> Quick Templates:
+              </span>
+              <div className="quick-presets-chips">
+                {[
+                  { name: "Paracetamol", dose: "500 mg", cat: "Tablet", ins: "After Food" },
+                  { name: "Metformin", dose: "500 mg", cat: "Tablet", ins: "With Food" },
+                  { name: "Amoxicillin", dose: "250 mg", cat: "Capsule", ins: "Before Food" },
+                  { name: "Cough Syrup", dose: "10 ml", cat: "Syrup", ins: "After Food" },
+                ].map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    className="preset-chip-btn"
+                    onClick={() => handleQuickPreset(preset.name, preset.dose, preset.cat, preset.ins)}
+                  >
+                    + {preset.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {statusMessage && (
-              <div className={`status-banner ${statusMessage.type}`} style={{ marginBottom: "18px" }}>
-                {statusMessage.type === "success" ? (
-                  <CheckCircle2 size={18} />
-                ) : (
-                  <AlertCircle size={18} />
-                )}
-                <span>{statusMessage.text}</span>
+              <div className={`status-banner ${statusMessage.type}`}>
+                <div className="status-banner-icon">
+                  {statusMessage.type === "success" ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <AlertCircle size={18} />
+                  )}
+                </div>
+                <div className="status-banner-text">{statusMessage.text}</div>
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="form-stack">
               {/* Medicine Name */}
               <div className="field-group">
-                <label className="field-label">Medicine Name *</label>
+                <label className="field-label">
+                  Medicine Name <span className="field-required">*</span>
+                </label>
                 <div className="field-input-box">
-                  <Pill size={18} color="#38bdf8" />
+                  <Pill size={18} className="field-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. Paracetamol, Dolo 650, Metformin"
+                    placeholder="e.g. Paracetamol, Dolo 650, Atorvastatin"
                     value={medicineName}
                     onChange={(e) => setMedicineName(e.target.value)}
                     required
@@ -249,12 +434,14 @@ function AddMedicine() {
 
               {/* Dosage Description */}
               <div className="field-group">
-                <label className="field-label">Dosage & Strength *</label>
+                <label className="field-label">
+                  Dosage & Strength <span className="field-required">*</span>
+                </label>
                 <div className="field-input-box">
-                  <Tag size={18} color="#38bdf8" />
+                  <Tag size={18} className="field-icon" />
                   <input
                     type="text"
-                    placeholder="e.g. 500 mg, 1 Tablet, 10 ml"
+                    placeholder="e.g. 500 mg, 1 Tablet, 10 ml, 2 Puffs"
                     value={dosage}
                     onChange={(e) => setDosage(e.target.value)}
                     required
@@ -262,14 +449,15 @@ function AddMedicine() {
                 </div>
               </div>
 
-              {/* Category & Formulation */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+              {/* Category & Instructions (2-col grid) */}
+              <div className="form-row-2">
                 <div className="field-group">
                   <label className="field-label">Category</label>
-                  <div className="field-input-box">
+                  <div className="field-input-box select-wrapper">
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
+                      className="field-select-styled"
                     >
                       <option value="Tablet">Tablet</option>
                       <option value="Capsule">Capsule</option>
@@ -283,11 +471,12 @@ function AddMedicine() {
                 </div>
 
                 <div className="field-group">
-                  <label className="field-label">Instructions</label>
-                  <div className="field-input-box">
+                  <label className="field-label">Food Timing</label>
+                  <div className="field-input-box select-wrapper">
                     <select
                       value={instructions}
                       onChange={(e) => setInstructions(e.target.value)}
+                      className="field-select-styled"
                     >
                       <option value="After Food">After Food</option>
                       <option value="Before Food">Before Food</option>
@@ -299,26 +488,30 @@ function AddMedicine() {
                 </div>
               </div>
 
-              {/* Daily Timings */}
+              {/* Daily Scheduled Timings */}
               <div className="field-group">
-                <label className="field-label">Scheduled Timings</label>
-                <div className="timing-chips-row">
+                <label className="field-label">
+                  Dosing Schedule <span className="field-hint">(Select all that apply)</span>
+                </label>
+                <div className="timing-chips-grid">
                   {[
-                    { key: "morning", label: "Morning" },
-                    { key: "noon", label: "Noon" },
-                    { key: "night", label: "Night" },
-                    { key: "bedtime", label: "Bedtime" },
-                  ].map(({ key, label }) => {
+                    { key: "morning", label: "Morning", icon: <Sunrise size={15} /> },
+                    { key: "noon", label: "Noon", icon: <Sun size={15} /> },
+                    { key: "night", label: "Night", icon: <Moon size={15} /> },
+                    { key: "bedtime", label: "Bedtime", icon: <Clock size={15} /> },
+                  ].map(({ key, label, icon }) => {
                     const isActive = timings[key];
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={key}
                         onClick={() => handleTimingToggle(key)}
-                        className={`timing-chip ${isActive ? "active" : "inactive"}`}
+                        className={`timing-chip-card ${isActive ? "active" : ""}`}
                       >
-                        <Clock size={14} />
-                        <span>{label}</span>
-                      </div>
+                        <div className="timing-chip-icon">{icon}</div>
+                        <span className="timing-chip-label">{label}</span>
+                        {isActive && <Check size={14} className="timing-chip-check" />}
+                      </button>
                     );
                   })}
                 </div>
@@ -327,60 +520,70 @@ function AddMedicine() {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="submit-btn"
+                className="submit-med-btn"
                 disabled={submitting}
               >
                 {submitting ? (
                   <>
-                    <div className="loading-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-                    <span>Saving to Firebase...</span>
+                    <div className="loading-spinner-circle" />
+                    <span>Synchronizing to Firebase...</span>
                   </>
                 ) : (
                   <>
-                    <PlusCircle size={18} />
-                    <span>Save Medicine to Firebase</span>
+                    <PlusCircle size={19} />
+                    <span>Save Medicine to Cloud Database</span>
                   </>
                 )}
               </button>
             </form>
           </div>
 
-          {/* RIGHT: Fetched All Medicines List */}
-          <div className="glass-panel">
+          {/* RIGHT: Fetched All Medicines Catalog Panel */}
+          <div className="glass-panel catalog-panel">
             <div className="panel-header">
-              <h2 className="panel-title">
-                <FileText size={22} color="#38bdf8" /> Stored Medicines
-              </h2>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span className="panel-badge">
-                  {medicines.length} in Firebase
+              <div className="panel-header-title-group">
+                <div className="panel-icon-badge cyan">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h2 className="panel-title">Stored Medicines</h2>
+                  <span className="panel-subtext">Real-time cloud catalog</span>
+                </div>
+              </div>
+
+              <div className="panel-actions-group">
+                {/* Generate Report Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(true)}
+                  className="generate-report-btn"
+                  title="Generate Medication Schedule Report"
+                  disabled={medicines.length === 0}
+                >
+                  <Printer size={15} />
+                  <span>Generate Report</span>
+                </button>
+
+                <span className="panel-pill-counter">
+                  {medicines.length} in Cloud
                 </span>
                 <button
                   onClick={handleManualRefresh}
-                  title="Refresh from Firebase"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#94a3b8",
-                    cursor: "pointer",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+                  title="Force Sync from Firebase"
+                  className="refresh-icon-button"
+                  disabled={fetching}
                 >
-                  <RefreshCw size={16} className={fetching ? "loading-spinner" : ""} />
+                  <RefreshCw size={16} className={fetching ? "spin" : ""} />
                 </button>
               </div>
             </div>
 
             {/* Search filter for loaded list */}
             <div className="list-search-wrapper">
-              <Search size={16} color="#64748b" />
+              <Search size={17} className="search-input-icon" />
               <input
                 type="text"
-                placeholder="Filter medicines by name, dosage or category..."
+                placeholder="Search by drug name, dosage, or category..."
                 value={searchFilter}
                 onChange={(e) => setSearchFilter(e.target.value)}
               />
@@ -395,43 +598,85 @@ function AddMedicine() {
               )}
             </div>
 
+            {/* Quick Category Filter Pills */}
+            <div className="category-filter-chips-row">
+              {categoriesList.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`cat-filter-chip ${selectedCategoryFilter === cat ? "active" : ""}`}
+                  onClick={() => setSelectedCategoryFilter(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {/* List Body */}
             {fetching && medicines.length === 0 ? (
               <div className="loading-state-box">
-                <div className="loading-spinner" />
-                <span>Fetching all medicines from Firebase...</span>
+                <div className="loading-spinner-circle large" />
+                <span className="loading-text">Fetching medications from Firestore...</span>
+                <span className="loading-subtext">Securing end-to-end encrypted connection</span>
               </div>
             ) : filteredMedicines.length === 0 ? (
               <div className="empty-state-box">
-                <Calendar size={44} color="#475569" />
-                <p>
-                  {searchFilter
-                    ? `No medicines match "${searchFilter}"`
-                    : "No medicines found in Firebase. Add your first medicine using the form!"}
+                <div className="empty-state-visual">
+                  <div className="empty-pulse-radar"></div>
+                  <Pill size={40} className="empty-pill-icon" />
+                </div>
+                <h3 className="empty-title">
+                  {searchFilter || selectedCategoryFilter !== "All"
+                    ? "No Matching Formulations Found"
+                    : "No Medications in Cloud Yet"}
+                </h3>
+                <p className="empty-desc">
+                  {searchFilter || selectedCategoryFilter !== "All"
+                    ? `No medications match "${searchFilter || selectedCategoryFilter}". Try clearing your filters.`
+                    : "Add your first prescription medicine using the form on the left to start real-time tracking!"}
                 </p>
+                {(searchFilter || selectedCategoryFilter !== "All") && (
+                  <button
+                    className="empty-reset-filter-btn"
+                    onClick={() => {
+                      setSearchFilter("");
+                      setSelectedCategoryFilter("All");
+                    }}
+                  >
+                    Reset All Filters
+                  </button>
+                )}
               </div>
             ) : (
               <div className="medicines-scroll-list">
                 {filteredMedicines.map((med) => {
                   const displayName = med.medicineName || med.name || "Unnamed Medicine";
                   const medTimings = med.timings || {};
-                  const timingKeys = Object.keys(medTimings).filter((k) => medTimings[k]);
+                  const timingKeys = ["morning", "noon", "night", "bedtime"].filter((k) => medTimings[k]);
+                  const catClass = (med.category || "tablet").toLowerCase();
 
                   return (
-                    <div key={med.id} className="med-item-card">
+                    <div key={med.id} className={`med-item-card cat-${catClass}`}>
                       <div className="med-item-main">
-                        <div className="med-avatar">
+                        <div className={`med-avatar cat-avatar-${catClass}`}>
                           <Pill size={22} />
                         </div>
                         <div className="med-details">
-                          <span className="med-name">{displayName}</span>
+                          <div className="med-title-row">
+                            <span className="med-name">{displayName}</span>
+                            <span className="med-dosage-tag">{med.dosage || "Standard"}</span>
+                          </div>
+
                           <div className="med-meta-row">
-                            <span className="med-dosage-tag">{med.dosage || "Standard Dose"}</span>
                             {med.category && (
-                              <span className="med-category-tag">{med.category}</span>
+                              <span className={`med-category-tag badge-${catClass}`}>
+                                {med.category}
+                              </span>
                             )}
                             {med.instructions && (
-                              <span className="med-instruction-tag">{med.instructions}</span>
+                              <span className="med-instruction-tag">
+                                {med.instructions}
+                              </span>
                             )}
                           </div>
 
@@ -439,6 +684,7 @@ function AddMedicine() {
                             <div className="med-timings-row">
                               {timingKeys.map((time) => (
                                 <span key={time} className="med-timing-badge">
+                                  <span className="timing-dot"></span>
                                   {time}
                                 </span>
                               ))}
@@ -447,13 +693,15 @@ function AddMedicine() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleDelete(med.id, displayName)}
-                        className="med-delete-btn"
-                        title="Remove from Firebase"
-                      >
-                        <Trash2 size={17} />
-                      </button>
+                      <div className="med-item-actions">
+                        <button
+                          onClick={() => handleDelete(med.id, displayName)}
+                          className="med-delete-btn"
+                          title="Remove from Firebase"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -462,6 +710,142 @@ function AddMedicine() {
           </div>
         </div>
       </div>
+
+      {/* =====================================================================
+          REPORT GENERATION MODAL (PRINTABLE & DOWNLOADABLE)
+          ===================================================================== */}
+      {showReportModal && (
+        <div className="report-modal-overlay" onClick={() => setShowReportModal(false)}>
+          <div className="report-modal-card" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="report-header">
+              <div className="report-brand">
+                <div className="report-brand-icon">
+                  <Pill size={22} />
+                </div>
+                <div>
+                  <h2 className="report-title">MediSync Clinical Prescription Report</h2>
+                  <span className="report-subtitle">Personal Patient Medication & Dosing Schedule</span>
+                </div>
+              </div>
+              <button
+                className="report-close-x"
+                onClick={() => setShowReportModal(false)}
+                title="Close report"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Patient Meta Box */}
+            <div className="report-meta-box">
+              <div className="report-meta-item">
+                <span className="report-meta-label">Patient Account</span>
+                <span className="report-meta-value">{user?.email || "Guest Patient"}</span>
+              </div>
+              <div className="report-meta-item">
+                <span className="report-meta-label">Generated Date</span>
+                <span className="report-meta-value">
+                  {new Date().toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              <div className="report-meta-item">
+                <span className="report-meta-label">Total Medications</span>
+                <span className="report-meta-value">{medicines.length} Formulations</span>
+              </div>
+            </div>
+
+            {/* Medication Schedule Table */}
+            <div className="report-table-scroll">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Medication</th>
+                    <th>Dosage</th>
+                    <th>Category</th>
+                    <th>Meal Timing</th>
+                    <th className="th-center">Morning</th>
+                    <th className="th-center">Noon</th>
+                    <th className="th-center">Night</th>
+                    <th className="th-center">Bedtime</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {medicines.map((med, idx) => {
+                    const t = med.timings || {};
+                    return (
+                      <tr key={med.id || idx}>
+                        <td className="td-idx">{idx + 1}</td>
+                        <td className="td-med-name">{med.medicineName || med.name}</td>
+                        <td className="td-dosage">{med.dosage || "Standard"}</td>
+                        <td>
+                          <span className="report-cat-badge">{med.category || "Tablet"}</span>
+                        </td>
+                        <td>{med.instructions || "As Directed"}</td>
+                        <td className="td-center">
+                          {t.morning ? <span className="report-check-yes">✓</span> : <span className="report-dash">—</span>}
+                        </td>
+                        <td className="td-center">
+                          {t.noon ? <span className="report-check-yes">✓</span> : <span className="report-dash">—</span>}
+                        </td>
+                        <td className="td-center">
+                          {t.night ? <span className="report-check-yes">✓</span> : <span className="report-dash">—</span>}
+                        </td>
+                        <td className="td-center">
+                          {t.bedtime ? <span className="report-check-yes">✓</span> : <span className="report-dash">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Disclaimer */}
+            <div className="report-disclaimer">
+              <p>
+                <strong>Clinical Notice:</strong> This schedule is generated for personal medication tracking. Always consult your attending physician, pharmacist, or specialist before modifying any prescribed regimen.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="report-modal-actions">
+              <button
+                type="button"
+                className="report-download-btn"
+                onClick={handleDownloadTextReport}
+              >
+                <Download size={16} />
+                <span>Download Text Report</span>
+              </button>
+
+              <button
+                type="button"
+                className="report-print-btn"
+                onClick={handlePrintReport}
+              >
+                <Printer size={16} />
+                <span>Print / Save PDF</span>
+              </button>
+
+              <button
+                type="button"
+                className="report-close-btn"
+                onClick={() => setShowReportModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
