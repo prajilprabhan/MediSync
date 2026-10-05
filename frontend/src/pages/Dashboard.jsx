@@ -9,10 +9,78 @@ import {
   History,
   CheckCircle,
   ArrowRight,
+  Printer,
+  MessageSquare,
+  AlertTriangle,
+  ShieldAlert,
+  Info,
+  Compass,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { saveAnalysisHistory, updateAnalysisHistory } from "../services/firestore";
+import { printInteractionReport } from "../services/printService";
+import SessionFeedbackCard from "../components/SessionFeedbackCard";
 import "./Dashboard.css";
+
+const SEVERITY_CONFIG = {
+  Major: {
+    label: "Major Severity",
+    badgeClass: "major",
+    color: "#ef4444",
+    tag: "High Clinical Risk — Immediate Medical Review",
+    direction: "Avoid Combination: High risk of severe adverse drug interactions or toxicity. Do not take these medications simultaneously without explicit physician consultation. Contact your doctor or pharmacist to discuss safer alternative treatments.",
+    actionItems: [
+      "Avoid combining without explicit doctor authorization",
+      "Consult prescribing physician or pharmacist for alternative drugs",
+      "Monitor closely for severe side effects or adverse reactions"
+    ]
+  },
+  Moderate: {
+    label: "Moderate Severity",
+    badgeClass: "moderate",
+    color: "#f59e0b",
+    tag: "Moderate Clinical Risk — Caution & Monitoring Required",
+    direction: "Use with Caution: Potential interaction that may alter drug efficacy or increase side effects. Separate administration times (space doses 2 to 4 hours apart) or adjust dosages under healthcare provider supervision.",
+    actionItems: [
+      "Separate administration times (take 2–4 hours apart)",
+      "Discuss potential dosage adjustments with your doctor or pharmacist",
+      "Observe for increased dizziness, gastrointestinal discomfort, or altered drug effects"
+    ]
+  },
+  Minor: {
+    label: "Minor Severity",
+    badgeClass: "minor",
+    color: "#10b981",
+    tag: "Low Clinical Risk — Minimal Clinical Significance",
+    direction: "Proceed with Routine Monitoring: Minor interaction with limited clinical impact. Safe for most patients under standard prescribed dosages. Maintain routine observation for mild symptoms.",
+    actionItems: [
+      "Take as routinely prescribed by your physician",
+      "No major dosage adjustments typically required",
+      "Stay hydrated and report any unexpected symptoms"
+    ]
+  },
+  "No Interaction": {
+    label: "No Interaction",
+    badgeClass: "safe",
+    color: "#38bdf8",
+    tag: "Clinically Compatible — No Interaction Found",
+    direction: "Safe to Take Together as Prescribed: No documented adverse interactions were found in the clinical pharmacovigilance database. Continue your regular medication schedule according to doctor instructions.",
+    actionItems: [
+      "Adhere to your doctor's prescribed dosage and schedule",
+      "Safe to take concurrently based on clinical database review",
+      "Inform healthcare providers if introducing new OTC medications or supplements"
+    ]
+  }
+};
+
+function getSeverityConfig(severity) {
+  const s = String(severity || "").toLowerCase();
+  if (s.includes("major")) return SEVERITY_CONFIG.Major;
+  if (s.includes("moderate")) return SEVERITY_CONFIG.Moderate;
+  if (s.includes("minor")) return SEVERITY_CONFIG.Minor;
+  return SEVERITY_CONFIG["No Interaction"];
+}
+
 
 function Dashboard() {
   const { user } = useAuth();
@@ -28,6 +96,7 @@ function Dashboard() {
   const [deepAnalysis, setDeepAnalysis] = useState("");
   const [deepLoading, setDeepLoading] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState(null);
+  const [currentSeverity, setCurrentSeverity] = useState("Safe");
   const [savedToHistory, setSavedToHistory] = useState(false);
   const [savingHistory, setSavingHistory] = useState(false);
 
@@ -179,28 +248,28 @@ function Dashboard() {
         else if (hasModerate) maxSeverity = "Moderate";
         else if (hasMinor) maxSeverity = "Minor";
       }
+      setCurrentSeverity(maxSeverity);
 
-      // Automatically save session to Firebase Firestore if logged in
-      if (user?.uid) {
-        try {
-          setSavingHistory(true);
-          const saveResult = await saveAnalysisHistory({
-            userId: user.uid,
-            userEmail: user.email || "user",
-            drugs: selectedMedicines,
-            results: data,
-            medicationDetails: details,
-            maxSeverity,
-            interactionCount: data.length,
-            deepAnalysis: "",
-          });
-          setCurrentHistoryId(saveResult.id);
-          setSavedToHistory(true);
-        } catch (saveErr) {
-          console.warn("Could not auto-save analysis history:", saveErr);
-        } finally {
-          setSavingHistory(false);
-        }
+      // Save analysis session to Firebase Firestore
+      const targetUserId = user?.uid || "guest";
+      try {
+        setSavingHistory(true);
+        const saveResult = await saveAnalysisHistory({
+          userId: targetUserId,
+          userEmail: user?.email || "anonymous",
+          drugs: selectedMedicines,
+          results: data,
+          medicationDetails: details,
+          maxSeverity,
+          interactionCount: data.length,
+          deepAnalysis: "",
+        });
+        setCurrentHistoryId(saveResult.id);
+        setSavedToHistory(true);
+      } catch (saveErr) {
+        console.error("Could not save analysis history to Firebase Firestore:", saveErr);
+      } finally {
+        setSavingHistory(false);
       }
     } catch (err) {
       setError(err.message || "An error occurred during analysis.");
@@ -249,6 +318,17 @@ function Dashboard() {
     } finally {
       setDeepLoading(false);
     }
+  };
+
+  const handlePrintReport = () => {
+    if (!analyzed) return;
+    printInteractionReport({
+      user,
+      selectedMedicines,
+      results,
+      medicationDetails,
+      deepAnalysis,
+    });
   };
 
   return (
@@ -363,34 +443,60 @@ function Dashboard() {
           <div className="card results-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", flexWrap: "wrap", gap: "10px" }}>
               <h2 style={{ margin: 0 }}>Interaction Results</h2>
-              {savingHistory && (
-                <span style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
-                  Saving to history...
-                </span>
-              )}
-              {savedToHistory && !savingHistory && (
-                <Link
-                  to="/history"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(16, 185, 129, 0.12)",
-                    border: "1px solid rgba(16, 185, 129, 0.35)",
-                    color: "#34d399",
-                    padding: "4px 12px",
-                    borderRadius: "20px",
-                    fontSize: "0.78rem",
-                    fontWeight: "500",
-                    textDecoration: "none",
-                  }}
-                  title="Click to view all saved analyses in your History"
-                >
-                  <CheckCircle size={14} />
-                  <span>Saved to History</span>
-                  <ArrowRight size={13} />
-                </Link>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                {savingHistory && (
+                  <span style={{ fontSize: "0.8rem", color: "#38bdf8" }}>
+                    Saving to Firebase Firestore...
+                  </span>
+                )}
+                {savedToHistory && !savingHistory && (
+                  <Link
+                    to="/history"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(16, 185, 129, 0.15)",
+                      border: "1px solid rgba(16, 185, 129, 0.4)",
+                      color: "#34d399",
+                      padding: "4px 12px",
+                      borderRadius: "20px",
+                      fontSize: "0.78rem",
+                      fontWeight: "500",
+                      textDecoration: "none",
+                    }}
+                    title="Click to view all saved analyses in your Firebase History"
+                  >
+                    <CheckCircle size={14} />
+                    <span>Saved to Firebase History</span>
+                    <ArrowRight size={13} />
+                  </Link>
+                )}
+                {analyzed && !loading && (
+                  <button
+                    type="button"
+                    onClick={handlePrintReport}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: "rgba(56, 189, 248, 0.12)",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      color: "#38bdf8",
+                      padding: "5px 12px",
+                      borderRadius: "8px",
+                      fontSize: "0.82rem",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                    }}
+                    title="Print or Save PDF report of this interaction analysis"
+                  >
+                    <Printer size={14} />
+                    <span>Print / Save PDF</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {loading && <p className="status-text">Analyzing interactions...</p>}
@@ -400,34 +506,131 @@ function Dashboard() {
               <p>Select at least two medicines and click "Analyze" to inspect interactions.</p>
             )}
 
+            {/* Direct Severity Indicator on Analysis */}
+            {!loading && !error && analyzed && (
+              <div className={`direct-severity-indicator severity-indicator-${currentSeverity.toLowerCase().replace(/\s+/g, "-")}`}>
+                <div className="direct-indicator-header">
+                  <div className="direct-indicator-badge">
+                    {currentSeverity === "Major" && <ShieldAlert size={20} />}
+                    {currentSeverity === "Moderate" && <AlertTriangle size={20} />}
+                    {currentSeverity === "Minor" && <Info size={20} />}
+                    {(currentSeverity === "No Interaction" || currentSeverity === "Safe") && <ShieldCheck size={20} />}
+                    <span>Direct Severity Indicator: <strong>{currentSeverity}</strong></span>
+                  </div>
+                  <span className="direct-indicator-status-tag">
+                    {currentSeverity === "Major" && "🔴 Severe Clinical Risk"}
+                    {currentSeverity === "Moderate" && "🟡 Moderate Caution Required"}
+                    {currentSeverity === "Minor" && "🟢 Low / Routine Monitoring"}
+                    {(currentSeverity === "No Interaction" || currentSeverity === "Safe") && "🛡️ Clinically Safe"}
+                  </span>
+                </div>
+
+                {/* Direct 4-Level Severity Meter */}
+                <div className="severity-meter">
+                  <div className={`meter-step ${(currentSeverity === "No Interaction" || currentSeverity === "Safe") ? "active safe-active" : ""}`}>
+                    <span className="dot"></span>
+                    <span className="label">No Interaction</span>
+                  </div>
+                  <div className={`meter-step ${currentSeverity === "Minor" ? "active minor-active" : ""}`}>
+                    <span className="dot"></span>
+                    <span className="label">Minor</span>
+                  </div>
+                  <div className={`meter-step ${currentSeverity === "Moderate" ? "active moderate-active" : ""}`}>
+                    <span className="dot"></span>
+                    <span className="label">Moderate</span>
+                  </div>
+                  <div className={`meter-step ${currentSeverity === "Major" ? "active major-active" : ""}`}>
+                    <span className="dot"></span>
+                    <span className="label">Major</span>
+                  </div>
+                </div>
+
+                {/* Direct Action Direction */}
+                <div className="direct-indicator-direction">
+                  <strong>🧭 Direct Direction:</strong>
+                  <p>{getSeverityConfig(currentSeverity).direction}</p>
+                </div>
+              </div>
+            )}
+
             {!loading && !error && analyzed && results.length === 0 && (
-              <div className="no-interaction">
-                <div className="severity minor">No Interaction</div>
-                <p>No interactions were found between the selected medicines. However, always consult with your physician before combining medications.</p>
+              <div className="no-interaction-card">
+                <div className="no-interaction-badge">
+                  <ShieldCheck size={26} />
+                  <span>No Negative Interactions Detected</span>
+                </div>
+                <p className="no-interaction-sub">
+                  No documented clinical interactions were found between <strong>{selectedMedicines.join(" + ")}</strong>.
+                </p>
+
+                <div className="direction-box direction-safe">
+                  <div className="direction-header">
+                    <Compass size={15} />
+                    <strong>Clinical Direction & Administration Protocol:</strong>
+                  </div>
+                  <p className="direction-text">
+                    {SEVERITY_CONFIG["No Interaction"].direction}
+                  </p>
+                  <ul className="direction-checklist">
+                    {SEVERITY_CONFIG["No Interaction"].actionItems.map((act, idx) => (
+                      <li key={idx}>
+                        <CheckCircle size={13} />
+                        <span>{act}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
 
             {!loading && !error && analyzed && results.length > 0 && (
               <div className="results-list">
                 {results.map((res, index) => {
-                  const sevLow = res.severity.toLowerCase();
+                  const config = getSeverityConfig(res.severity);
+                  const SevIcon = config.badgeClass === "major" ? ShieldAlert : config.badgeClass === "moderate" ? AlertTriangle : Info;
+                  const sevLow = String(res.severity || "").toLowerCase();
                   const sevClass =
                     sevLow === "major"
                       ? "major"
                       : sevLow === "moderate"
                       ? "moderate"
                       : "minor";
+
                   return (
-                    <div key={index} className="result-item">
+                    <div key={index} className={`result-item result-item-${sevClass}`}>
                       <div className="result-header">
-                        <strong>{res.drug_1} + {res.drug_2}</strong>
-                        <span className={`severity ${sevClass}`}>{res.severity}</span>
+                        <strong className="result-pair-title">
+                          <Pill size={15} />
+                          {res.drug_1} + {res.drug_2}
+                        </strong>
+                        <span className={`severity ${sevClass}`}>
+                          <SevIcon size={12} style={{ marginRight: "4px", verticalAlign: "middle" }} />
+                          {res.severity}
+                        </span>
                       </div>
+
                       <p className="result-description">{res.description}</p>
                       
+                      {/* Clinical Direction Callout */}
+                      <div className={`direction-box direction-${sevClass}`}>
+                        <div className="direction-header">
+                          <Compass size={15} />
+                          <strong>Clinical Direction & Action Guidance:</strong>
+                        </div>
+                        <p className="direction-text">{config.direction}</p>
+                        <ul className="direction-checklist">
+                          {config.actionItems.map((act, aIdx) => (
+                            <li key={aIdx}>
+                              <CheckCircle size={13} />
+                              <span>{act}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
                       {res.severity_explanation && (
                         <div className="result-detail" style={{ margin: "8px 0 4px 0", fontSize: "0.85rem", color: "#cbd5e1" }}>
-                          <strong>Severity Details:</strong> {res.severity_explanation}
+                          <strong>Severity Mechanism:</strong> {res.severity_explanation}
                         </div>
                       )}
                       {res.patient_note && (
@@ -442,7 +645,7 @@ function Dashboard() {
                       )}
 
                       <div className="result-meta" style={{ marginTop: "10px" }}>
-                        <small>Source: {res.source}</small>
+                        <small>Source: {res.source || "MediSync Clinical Database"}</small>
                       </div>
                     </div>
                   );
@@ -544,9 +747,35 @@ function Dashboard() {
         {/* Deep AI Report Card - below that */}
         {(deepLoading || deepAnalysis) && (
           <div className="card" style={{ marginTop: "30px", width: "100%", textAlign: "left" }}>
-            <h2 style={{ color: "#c084fc", display: "flex", alignItems: "center", gap: "10px", fontSize: "1.3rem", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "15px", marginBottom: "20px" }}>
-              ✨ Deep AI Clinical Report
-            </h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "15px", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+              <h2 style={{ color: "#c084fc", display: "flex", alignItems: "center", gap: "10px", fontSize: "1.3rem", margin: 0 }}>
+                ✨ Deep AI Clinical Report
+              </h2>
+              {deepAnalysis && !deepLoading && (
+                <button
+                  type="button"
+                  onClick={handlePrintReport}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(192, 132, 252, 0.15)",
+                    border: "1px solid rgba(192, 132, 252, 0.4)",
+                    color: "#d8b4fe",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    fontSize: "0.82rem",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                  title="Print or Save complete Deep AI & Interaction PDF Report"
+                >
+                  <Printer size={14} />
+                  <span>Print / Save PDF</span>
+                </button>
+              )}
+            </div>
             
             {deepLoading ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 20px" }}>
@@ -574,6 +803,17 @@ function Dashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* In-Session Feedback Evaluation Card */}
+        {analyzed && !loading && (
+          <SessionFeedbackCard
+            sessionId={currentHistoryId}
+            selectedMedicines={selectedMedicines}
+            maxSeverity={currentSeverity}
+            results={results}
+            deepAnalysis={deepAnalysis}
+          />
         )}
       </div>
 
